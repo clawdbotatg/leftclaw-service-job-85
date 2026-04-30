@@ -146,7 +146,7 @@ contract ClawdAndEffectTest is Test {
 
     /// Constructor sanity: zero address token reverts.
     function testConstructorRevertsOnZeroToken() public {
-        vm.expectRevert(ClawdAndEffect.ZeroAddressWinner.selector);
+        vm.expectRevert(ClawdAndEffect.ZeroAddressToken.selector);
         new ClawdAndEffect(address(0));
     }
 }

@@ -38,11 +38,12 @@ contract ClawdAndEffect {
     );
 
     error ZeroAddressWinner();
+    error ZeroAddressToken();
     error ZeroAmount();
 
     /// @param _clawdToken Address of the CLAWD ERC20 token contract.
     constructor(address _clawdToken) {
-        if (_clawdToken == address(0)) revert ZeroAddressWinner();
+        if (_clawdToken == address(0)) revert ZeroAddressToken();
         clawdToken = IERC20(_clawdToken);
     }
 
