@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "./DeployHelpers.s.sol";
 import { DeployYourContract } from "./DeployYourContract.s.sol";
+import { DeployClawdAndEffect } from "./DeployClawdAndEffect.s.sol";
 
 /**
  * @notice Main deployment script for all contracts
@@ -15,10 +16,11 @@ contract DeployScript is ScaffoldETHDeploy {
     // Deploys all your contracts sequentially
     // Add new deployments here when needed
 
-    
     DeployYourContract deployYourContract = new DeployYourContract();
     deployYourContract.run();
 
+    DeployClawdAndEffect deployClawdAndEffect = new DeployClawdAndEffect();
+    deployClawdAndEffect.run();
 
     // Deploy another contract
     // DeployMyContract myContract = new DeployMyContract();
