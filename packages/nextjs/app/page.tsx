@@ -1,84 +1,82 @@
-
 "use client";
 
-import { useAccount } from "wagmi";
-import { Address } from "@scaffold-ui/components";
+import { useEffect, useState } from "react";
 import type { NextPage } from "next";
-import { hardhat } from "viem/chains";
-import Link from "next/link";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { useTargetNetwork } from "~~/hooks/scaffold-eth";
+import { Disclaimers } from "~~/components/clawd/Disclaimers";
+import { HowItWorks } from "~~/components/clawd/HowItWorks";
+import { TipFlow } from "~~/components/clawd/TipFlow";
 
+type Snapshot = {
+  snapshotDate: string;
+  snapshotBlock: number;
+  tokenAddress: string;
+  holderCount: number;
+  holders: string[];
+};
 
 const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
-  const { targetNetwork } = useTargetNetwork();
+  // We fetch the snapshot client-side from /holders.json. It lives in public/
+  // so the static export ships it as a sibling file. This keeps the JS bundle
+  // small and lets us update the snapshot without rebuilding the whole site.
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("./holders.json", { cache: "force-cache" })
+      .then(r => {
+        if (!r.ok) throw new Error(`holders.json: HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((j: Snapshot) => {
+        if (cancelled) return;
+        if (!Array.isArray(j.holders) || j.holders.length === 0) {
+          throw new Error("holders.json is empty");
+        }
+        setSnapshot(j);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
-    <>
-      <div className="flex items-center flex-col grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-            
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address
-              address={connectedAddress}
-              chain={targetNetwork}
-              blockExplorerAddressLink={
-                targetNetwork.id === hardhat.id ? `/blockexplorer/address/${connectedAddress}` : undefined
-              }
-            />
+    <div className="flex items-center flex-col grow w-full">
+      <div className="w-full max-w-3xl px-4 sm:px-6 py-8 flex flex-col gap-5">
+        <header className="text-center mt-2">
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-1">Clawd & Effect</h1>
+          <p className="text-lg sm:text-xl opacity-80 italic m-0">A Hex Address Based Tipping Machine</p>
+          <p className="opacity-70 max-w-xl mx-auto mt-3 text-sm sm:text-base">
+            Pick a cause — a fun reason based on hex address patterns. Tip some CLAWD. See who gets it.
+          </p>
+        </header>
+
+        <HowItWorks />
+
+        {snapshot && <Disclaimers snapshotDate={snapshot.snapshotDate} holderCount={snapshot.holderCount} />}
+
+        {error && (
+          <div className="alert alert-error">
+            <span>Failed to load holder snapshot: {error}</span>
           </div>
-          
-<p className="text-center text-lg">
-  Get started by editing{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    packages/nextjs/app/page.tsx
-  </code>
-</p>
-<p className="text-center text-lg">
-  Edit your smart contract{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    YourContract.sol
-  </code>{" "}
-  in{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    packages/hardhat/contracts
-  </code>
-</p>
+        )}
 
-        </div>
-
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
+        {snapshot ? (
+          <TipFlow snapshot={snapshot} />
+        ) : !error ? (
+          <div className="card bg-base-100 shadow-sm">
+            <div className="card-body items-center">
+              <span className="loading loading-dots loading-md" />
+              <span className="text-sm opacity-70">Loading holder snapshot…</span>
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
-    </>
+    </div>
   );
 };
 
