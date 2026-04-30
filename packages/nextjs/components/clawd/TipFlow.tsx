@@ -10,7 +10,31 @@ import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import deployedContracts from "~~/contracts/deployedContracts";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { criteria as ALL_CRITERIA, type Criterion } from "~~/lib/criteria";
-import { notification } from "~~/utils/scaffold-eth";
+import { getParsedError, notification } from "~~/utils/scaffold-eth";
+
+/**
+ * Mobile deep-link helper. After a write call has been fired (the wallet
+ * received the request), nudge the user back to their wallet app on mobile
+ * so they don't have to manually switch — fixes a common UX foot-gun where
+ * users tap "Send" in dApp browsers and never see the wallet prompt.
+ *
+ * Only triggers on touch devices; desktop wallets handle their own focus.
+ */
+const isMobileUA = () => typeof navigator !== "undefined" && /android|iphone|ipad|mobile/i.test(navigator.userAgent);
+
+const writeAndOpen = async <T,>(write: () => Promise<T>): Promise<T> => {
+  const promise = write();
+  if (isMobileUA()) {
+    setTimeout(() => {
+      if (typeof window !== "undefined") {
+        // walletconnect:// is the most broadly-supported deep link; on iOS it
+        // hands off to the wallet picker, on Android most wallets register it.
+        window.location.href = "walletconnect://";
+      }
+    }, 2000);
+  }
+  return promise;
+};
 
 // CLAWD has 18 decimals (verified from rawContract.decimal=0x12 returned by
 // alchemy_getAssetTransfers). Hardcoding so we don't need an extra read.
@@ -116,6 +140,10 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
   const [reveal, setReveal] = useState<RevealState | null>(null);
   const [cooldown, setCooldown] = useState(false);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Persistent inline error surfaced under the action button. SE2's
+  // useTransactor already toasts errors, but a toast disappears in seconds —
+  // an inline message is the lasting feedback the user can refer back to.
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { data: txReceipt } = useWaitForTransactionReceipt({
     hash: pendingTxHash,
@@ -150,22 +178,30 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
   // ---------- handlers ----------
   const handleApprove = async () => {
     if (!parsedAmount) return;
+    setErrorMessage(null);
     try {
-      const hash = await approveAsync({
-        functionName: "approve",
-        args: [TIP_CONTRACT_ADDRESS, parsedAmount],
-      });
+      const hash = await writeAndOpen(() =>
+        approveAsync({
+          functionName: "approve",
+          args: [TIP_CONTRACT_ADDRESS, parsedAmount],
+        }),
+      );
       // approveAsync resolves once the transaction is confirmed by SE2's
       // useTransactor (it calls waitForTransactionReceipt under the hood).
-      // Refetch + cooldown to ensure the next "Send Tip" sees the new
-      // allowance and isn't hit by stale RPC cache.
+      // Order matters: start the cooldown FIRST so there is no microtask gap
+      // where both `isApproveMining` and `cooldown` are false (which would
+      // briefly re-render the Approve button as enabled). THEN refetch the
+      // allowance so the next paint sees the new value.
       if (hash) {
+        startCooldown();
         await refetchAllowance();
+      } else {
+        startCooldown();
       }
-      startCooldown();
     } catch (e: any) {
-      // SE2 useTransactor already shows a toast; do nothing extra.
+      // SE2 useTransactor already shows a toast; surface inline too.
       console.error("approve failed", e);
+      setErrorMessage(getParsedError(e));
     }
   };
 
@@ -175,6 +211,7 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
       notification.error("Holder snapshot is empty.");
       return;
     }
+    setErrorMessage(null);
     let winner: string;
     try {
       winner = selectedCriterion.evaluate(snapshot.holders, connectedAddress.toLowerCase());
@@ -187,10 +224,12 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
       return;
     }
     try {
-      const hash = await tipAsync({
-        functionName: "tip",
-        args: [winner as `0x${string}`, selectedCriterion.id, parsedAmount],
-      });
+      const hash = await writeAndOpen(() =>
+        tipAsync({
+          functionName: "tip",
+          args: [winner as `0x${string}`, selectedCriterion.id, parsedAmount],
+        }),
+      );
       if (hash) {
         // Defer the reveal until the tx confirms via useWaitForTransactionReceipt.
         setPendingReveal({
@@ -204,6 +243,7 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
       }
     } catch (e: any) {
       console.error("tip failed", e);
+      setErrorMessage(getParsedError(e));
     }
   };
 
@@ -213,6 +253,7 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
     setPendingTxHash(undefined);
     setSelectedId(null);
     setAmountStr("");
+    setErrorMessage(null);
   };
 
   // ---------- render branches ----------
@@ -383,8 +424,16 @@ export const TipFlow = ({ snapshot }: { snapshot: Snapshot }) => {
                         value={amountStr}
                         onChange={e => setAmountStr(e.target.value.replace(/[^0-9.]/g, ""))}
                       />
+                      <span className="label-text-alt text-[10px] opacity-60 mt-1">
+                        USD value not available — CLAWD has no oracle price feed.
+                      </span>
                     </label>
                     {actionButton}
+                    {errorMessage && (
+                      <div role="alert" className="alert alert-error text-xs py-2 px-3 break-words whitespace-pre-wrap">
+                        <span className="font-mono">{errorMessage}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </li>

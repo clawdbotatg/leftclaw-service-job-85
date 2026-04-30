@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 
-const baseUrl = process.env.NEXT_PUBLIC_PRODUCTION_URL
+const rawBaseUrl = process.env.NEXT_PUBLIC_PRODUCTION_URL
   ? process.env.NEXT_PUBLIC_PRODUCTION_URL
   : process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : `http://localhost:${process.env.PORT || 3000}`;
+// Strip trailing slash so concatenating `${baseUrl}${imageRelativePath}` (the
+// imageRelativePath always has a leading slash) doesn't yield a `//` in the
+// final URL — observed in QA output where NEXT_PUBLIC_PRODUCTION_URL=".../"
+// and imageRelativePath="/thumbnail.jpg" produced ".../thumbnail.jpg".
+const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 const titleTemplate = "%s";
 
 export const getMetadata = ({
@@ -16,7 +21,9 @@ export const getMetadata = ({
   description: string;
   imageRelativePath?: string;
 }): Metadata => {
-  const imageUrl = `${baseUrl}${imageRelativePath}`;
+  // Defense in depth: ensure imageRelativePath starts with exactly one slash.
+  const normalizedPath = imageRelativePath.startsWith("/") ? imageRelativePath : `/${imageRelativePath}`;
+  const imageUrl = `${baseUrl}${normalizedPath}`;
 
   return {
     metadataBase: new URL(baseUrl),

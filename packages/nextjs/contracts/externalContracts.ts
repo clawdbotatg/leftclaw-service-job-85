@@ -191,6 +191,13 @@ const externalContracts = {
             { name: "owner", type: "address", internalType: "address" },
           ],
         },
+        // SafeERC20 wrapper error — surfaced when SafeERC20.safeTransferFrom
+        // detects a non-standard ERC20 (returns false / no boolean). Defensive.
+        {
+          type: "error",
+          name: "SafeERC20FailedOperation",
+          inputs: [{ name: "token", type: "address", internalType: "address" }],
+        },
       ],
     },
   },
